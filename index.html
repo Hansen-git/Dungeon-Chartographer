@@ -1267,6 +1267,11 @@ function generateLayout(size){
   let boss=entrance, maxDepth=-1;
   depth.forEach((d,i)=>{ if(d>maxDepth){ maxDepth=d; boss=i; } });
 
+  // Display numbering: entrance is always Chamber 1, and the rest follow in
+  // distance-from-entrance order (ties broken by original id for stability).
+  const order = rooms.map((r,i)=>i).sort((a,b)=> depth[a]-depth[b] || a-b);
+  order.forEach((roomIdx, i) => { rooms[roomIdx].num = i+1; });
+
   return {rooms, edges, entrance, boss, depth};
 }
 
@@ -1516,7 +1521,7 @@ function renderMap(layout){
   rooms.forEach(r=>{
     const x=tx(r.x), y=ty(r.y);
     roomsSvg += `<rect class="room-poly" data-id="${r.id}" x="${x}" y="${y}" width="${r.w}" height="${r.h}" rx="1.2"/>`;
-    roomsSvg += `<text class="room-label" x="${x+r.w/2}" y="${y+r.h+4.5}">${r.id+1}</text>`;
+    roomsSvg += `<text class="room-label" x="${x+r.w/2}" y="${y+r.h+4.5}">${r.num}</text>`;
     roomsSvg += `<g class="room-icon" transform="translate(${x+r.w/2},${y+r.h/2})">${iconFor(r.role)}</g>`;
   });
 
@@ -1673,7 +1678,7 @@ function showDetail(room){
   const c = room.content || {};
   let html = "";
 
-  html += `<div class="room-heading">Chamber ${room.id+1}</div>`;
+  html += `<div class="room-heading">Chamber ${room.num}</div>`;
   html += `<span class="role-tag ${room.role}">${roleLabel(room.role)}</span>`;
 
   html += `<div class="room-toolbar">
@@ -1847,6 +1852,15 @@ function escapeHtml(s){
   return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
 }
 
+function getMapSvgMarkup(){
+  const svg = document.getElementById('mapSvg');
+  if(!svg) return "<p><em>No map available.</em></p>";
+  const clone = svg.cloneNode(true);
+  clone.querySelectorAll('.room-poly.selected').forEach(el=>el.classList.remove('selected'));
+  clone.removeAttribute('style');
+  return clone.outerHTML;
+}
+
 function monsterCountsByName(monsters){
   const map = new Map();
   monsters.forEach(m=>{
@@ -1880,9 +1894,10 @@ function buildDungeonExport(){
   if(!layout) return "<!DOCTYPE html><html><body><p>No dungeon has been generated yet.</p></body></html>";
 
   let roomsHtml = "";
-  layout.rooms.forEach(r=>{
+  const roomsInOrder = [...layout.rooms].sort((a,b)=>a.num-b.num);
+  roomsInOrder.forEach(r=>{
     roomsHtml += `<div class="chamber">`;
-    roomsHtml += `<h2>Chamber ${r.id+1} <span class="role-tag-print role-${r.role}">${escapeHtml(roleLabel(r.role))}</span></h2>`;
+    roomsHtml += `<h2>Chamber ${r.num} <span class="role-tag-print role-${r.role}">${escapeHtml(roleLabel(r.role))}</span></h2>`;
     if(r.description) roomsHtml += `<p class="desc">${escapeHtml(r.description)}</p>`;
 
     const c = r.content || {};
@@ -1956,13 +1971,28 @@ function buildDungeonExport(){
   .item-list{ list-style: none; padding-left: 0; }
   .item-list li{ margin-bottom: 8px; }
   .item-meta{ color:#5B4B39; font-size: 12.5px; }
-  @media print{ body{ background:#fff; } .statblock{ break-inside: avoid; } }
+  .map-wrap{
+    border: 1px solid rgba(43,33,22,0.3); border-radius: 4px;
+    background: #DDD0AC; padding: 10px; margin-bottom: 24px;
+  }
+  .map-wrap svg{ width: 100%; height: auto; display: block; max-height: 520px; }
+  :root{
+    --parchment: #EAE0C7; --parchment-dark: #DDD0AC; --ink: #2B2116;
+    --ink-soft: #5B4B39; --blood: #8C2A32; --gold: #A9793B; --moss: #4E6353;
+    --grid-line: rgba(43,33,22,0.08);
+  }
+  .room-poly{ fill: var(--parchment); stroke: var(--ink); stroke-width: 1.6; }
+  .corridor{ fill: var(--parchment); stroke: var(--ink); stroke-width: 1.3; }
+  .room-label{ font-family:'Courier New', monospace; font-size: 9px; fill: var(--ink-soft); text-anchor: middle; }
+  .room-icon{ }
+  @media print{ body{ background:#fff; } .statblock{ break-inside: avoid; } .map-wrap{ break-inside: avoid; } }
 </style>
 </head>
 <body>
   <h1>Dungeon Cartographer's Ledger</h1>
   <p class="meta">Party: level ${params.level} × ${params.partySize} adventurers — ${escapeHtml(params.difficulty)} difficulty<br>
   Theme: ${escapeHtml(params.theme)} — Size: ${escapeHtml(params.size)}</p>
+  <div class="map-wrap">${getMapSvgMarkup()}</div>
   <hr>
   ${roomsHtml}
 </body>
